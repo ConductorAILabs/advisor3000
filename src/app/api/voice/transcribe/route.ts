@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { transcribeAudio } from "@/lib/elevenlabs";
+import { requireUser } from "@/lib/session";
 
 export async function POST(req: NextRequest) {
+  const user = await requireUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
   if (!process.env.ELEVENLABS_API_KEY) {
     return NextResponse.json({ error: "ElevenLabs not configured" }, { status: 500 });
   }

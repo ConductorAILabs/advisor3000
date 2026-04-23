@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/neon";
+import { requireUser } from "@/lib/session";
 import React from "react";
 import {
   Document,
@@ -686,6 +687,9 @@ function truncate(str: string, max: number): string {
 // ---------------------------------------------------------------------------
 
 export async function GET(req: NextRequest) {
+  const user = await requireUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
   const verdictId = req.nextUrl.searchParams.get("verdict_id");
 
   if (!verdictId) {
@@ -695,7 +699,7 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // Fetch verdict + campaign in one query
+  // Fetch verdict + campaign in one query, scoped to user's client
   const rows = await sql`
     SELECT
       v.id,
@@ -706,12 +710,16 @@ export async function GET(req: NextRequest) {
       v.created_at,
       c.headline,
       c.industry,
-      c.media_type
+      c.media_type,
+      c.client_id
     FROM verdicts v
     JOIN campaigns c ON c.id = v.campaign_id
     WHERE v.id = ${verdictId}
     LIMIT 1
   `;
+  if (rows[0] && rows[0].client_id !== user.clientId) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
 
   if (rows.length === 0) {
     return NextResponse.json(

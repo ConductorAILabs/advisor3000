@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { embed } from "@/lib/voyage";
 import Anthropic from "@anthropic-ai/sdk";
+import { requireUser } from "@/lib/session";
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -17,6 +18,9 @@ function cosineSimilarity(a: number[], b: number[]): number {
 }
 
 export async function POST(req: NextRequest) {
+  const user = await requireUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
   const { headlines, industry, media_type } = await req.json();
 
   if (!headlines || !Array.isArray(headlines) || headlines.length < 2) {

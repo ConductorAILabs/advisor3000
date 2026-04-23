@@ -114,8 +114,19 @@ export default function TrendsPage() {
   }, [days, industry]);
 
   useEffect(() => {
-    fetchTrends();
-  }, [fetchTrends]);
+    let cancelled = false;
+    const params = new URLSearchParams({ days: String(days) });
+    if (industry) params.set("industry", industry);
+    fetch(`/api/trends?${params}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        if (!data.error) setReport(data);
+        setLoading(false);
+      })
+      .catch(() => !cancelled && setLoading(false));
+    return () => { cancelled = true; };
+  }, [days, industry]);
 
   return (
     <div className="space-y-10">

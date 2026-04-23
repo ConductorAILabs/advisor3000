@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Volume2, Loader2, Square } from "lucide-react";
+import { useSession } from "next-auth/react";
+import Link from "next/link";
+import { Volume2, Loader2, Square, Lock } from "lucide-react";
 
 interface VoiceVerdictProps {
   result: { overall_score: number } & object;
@@ -51,6 +53,7 @@ function Toast({ message, onDismiss }: { message: string; onDismiss: () => void 
 }
 
 export function VoiceVerdict({ result }: VoiceVerdictProps) {
+  const { status: authStatus } = useSession();
   const [status, setStatus] = useState<Status>("idle");
   const [toastMsg, setToastMsg] = useState("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -71,7 +74,14 @@ export function VoiceVerdict({ result }: VoiceVerdictProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(result),
       });
-      if (!res.ok) throw new Error("Voice synthesis failed");
+      if (!res.ok) {
+        let msg = "Voice synthesis failed";
+        try {
+          const data = await res.json();
+          if (data?.error) msg = data.error;
+        } catch {}
+        throw new Error(msg);
+      }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
@@ -89,36 +99,50 @@ export function VoiceVerdict({ result }: VoiceVerdictProps) {
 
   return (
     <>
-      <div className="space-y-3 mt-4">
-        <p className="text-[10px] uppercase tracking-[0.2em] text-[var(--text-muted)] font-medium">What people will say</p>
-        <div className="space-y-2">
+      <div className="space-y-4 mt-5">
+        <p className="section-eyebrow">What people will say</p>
+        <div className="space-y-2.5">
           {lines.map((line, i) => (
-            <p key={i} className="text-sm text-[var(--foreground)] opacity-80 leading-snug">
-              "{line}"
-            </p>
+            <div
+              key={i}
+              className="pull-quote animate-fade-up opacity-0"
+              style={{ animationDelay: `${200 + i * 100}ms`, animationFillMode: "forwards" }}
+            >
+              {line}
+            </div>
           ))}
         </div>
-        <button
-          onClick={handlePlay}
-          disabled={status === "loading"}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all border mt-2 ${
-            status === "playing"
-              ? "bg-[var(--accent)]/15 border-[var(--accent)]/40 text-[var(--accent)]"
-              : "bg-[var(--surface)] border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--foreground)] hover:border-[var(--accent)]/30"
-          } disabled:opacity-50`}
-        >
-          {status === "loading" ? <Loader2 className="w-4 h-4 animate-spin" /> :
-           status === "playing" ? <Square className="w-4 h-4 fill-current" /> :
-           <Volume2 className="w-4 h-4" />}
-          {status === "loading" ? "Generating..." : status === "playing" ? "Stop" : "Hear Reactions"}
-          {status === "playing" && (
-            <span className="flex items-end gap-0.5 h-4 ml-1">
-              {[0,1,2,3,4].map(i => (
-                <span key={i} className="w-0.5 rounded-full bg-[var(--accent)]" style={{ height: "100%", animation: "waveBar 1.2s ease-in-out infinite", animationDelay: `${i * 0.15}s` }} />
-              ))}
-            </span>
-          )}
-        </button>
+        {authStatus === "unauthenticated" ? (
+          <Link
+            href="/signup"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all border mt-2 bg-[var(--surface)] border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--accent)] hover:border-[var(--accent)]/40"
+          >
+            <Lock className="w-4 h-4" />
+            Sign up to hear reactions →
+          </Link>
+        ) : (
+          <button
+            onClick={handlePlay}
+            disabled={status === "loading" || authStatus === "loading"}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all border mt-2 ${
+              status === "playing"
+                ? "bg-[var(--accent)]/15 border-[var(--accent)]/40 text-[var(--accent)]"
+                : "bg-[var(--surface)] border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--foreground)] hover:border-[var(--accent)]/30"
+            } disabled:opacity-50`}
+          >
+            {status === "loading" ? <Loader2 className="w-4 h-4 animate-spin" /> :
+             status === "playing" ? <Square className="w-4 h-4 fill-current" /> :
+             <Volume2 className="w-4 h-4" />}
+            {status === "loading" ? "Generating..." : status === "playing" ? "Stop" : "Hear Reactions"}
+            {status === "playing" && (
+              <span className="flex items-end gap-0.5 h-4 ml-1">
+                {[0,1,2,3,4].map(i => (
+                  <span key={i} className="w-0.5 rounded-full bg-[var(--accent)]" style={{ height: "100%", animation: "waveBar 1.2s ease-in-out infinite", animationDelay: `${i * 0.15}s` }} />
+                ))}
+              </span>
+            )}
+          </button>
+        )}
       </div>
       {toastMsg && <Toast message={toastMsg} onDismiss={dismissToast} />}
       <style>{`@keyframes waveBar { 0%,100%{transform:scaleY(0.3)} 50%{transform:scaleY(1)} }`}</style>

@@ -1,12 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { signIn } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
-export default function RegisterPage() {
+function SignupForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const next = searchParams.get("next") || "/dashboard";
+
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -18,21 +21,21 @@ export default function RegisterPage() {
     setError("");
     setLoading(true);
 
-    const res = await fetch("/api/auth/register", {
+    const res = await fetch("/api/auth/signup", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password, name }),
     });
 
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
 
     if (!res.ok) {
-      setError(data.error || "Registration failed");
+      setError(data.error || "Sign up failed");
       setLoading(false);
       return;
     }
 
-    // Auto sign in after registration
+    // Auto sign in after successful signup
     const signInRes = await signIn("credentials", {
       email,
       password,
@@ -43,10 +46,11 @@ export default function RegisterPage() {
 
     if (signInRes?.error) {
       setError("Account created but sign-in failed. Please sign in manually.");
-    } else {
-      router.push("/dashboard");
-      router.refresh();
+      return;
     }
+
+    router.push(next);
+    router.refresh();
   }
 
   return (
@@ -54,10 +58,10 @@ export default function RegisterPage() {
       <div className="w-full max-w-md space-y-8">
         <div className="text-center">
           <h1 className="text-3xl font-bold tracking-tight">
-            Create your <span className="text-amber-400">ad</span>judge account
+            Sign up for <span className="text-amber-400">ad</span>judge
           </h1>
           <p className="text-[var(--text-muted)] mt-2">
-            Start judging ad originality today
+            Free account — unlocks audio reactions to your ads
           </p>
         </div>
 
@@ -115,7 +119,7 @@ export default function RegisterPage() {
             disabled={loading}
             className="w-full bg-amber-400 text-zinc-950 py-3 rounded-lg font-semibold hover:bg-amber-300 transition-colors disabled:opacity-50"
           >
-            {loading ? "Creating account..." : "Create account"}
+            {loading ? "Creating account..." : "Create free account"}
           </button>
         </form>
 
@@ -127,5 +131,13 @@ export default function RegisterPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense fallback={null}>
+      <SignupForm />
+    </Suspense>
   );
 }

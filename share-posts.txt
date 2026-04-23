@@ -1,0 +1,48 @@
+AD-VISOR 3000 — SHAREABLE POSTS
+https://adjudge-app.netlify.app
+
+Tagline: Find out if your creative is original without having to search for hours on end.
+
+═══════════════════════════════════════════════════════════
+LINKEDIN (long, confident, call-the-industry-out)
+═══════════════════════════════════════════════════════════
+
+Every creative director knows the feeling.
+
+The agency deck lands. The headline is "reimagine possible." The visual is a person looking thoughtfully out a window. The strategy is "disrupt the category." Everyone nods. The invoice clears. The work runs. Nothing happens.
+
+I built Ad-Visor 3000 because I got tired of paying for creative that a prompt could have written in ten seconds.
+
+Find out if your creative is original without having to search for hours on end. You drop in your headline, body copy, and script. It cross-references against the actual advertising corpus, runs a four-dimensional originality analysis (concept, language, strategy, execution), and tells you — with evidence — whether your agency gave you something genuinely new or something that's already been done eight times in your own category.
+
+It also plays you the reactions. Not a verdict. Reactions. Three one-sentence reads from the kind of people your ad will actually have to survive. Voiced by ElevenLabs so you can hear what "derivative" actually sounds like.
+
+Built in three days using Kiro's spec-driven development, Claude Sonnet 4.6 for analysis, and ElevenLabs for the voice layer.
+
+Try it on a brief your agency just sent you. You'll know very quickly whether you're paying for originality or for decoration.
+
+https://adjudge-app.netlify.app
+
+
+═══════════════════════════════════════════════════════════
+TWITTER / X (short, blunt)
+═══════════════════════════════════════════════════════════
+
+Find out if your creative is original without having to search for hours on end.
+
+Ad-Visor 3000 — drop in any ad, get a 0–100 originality score with evidence. Plays you one-line reactions so you can hear what "derivative" actually sounds like.
+
+https://adjudge-app.netlify.app
+
+
+═══════════════════════════════════════════════════════════
+INSTAGRAM / GENERAL SHORT POST
+═══════════════════════════════════════════════════════════
+
+Ad-Visor 3000 is live.
+
+Find out if your creative is original without having to search for hours on end. Grades any ad against the actual advertising corpus, scores it 0–100 with evidence, and plays you the reactions — voiced by AI.
+
+Built with Kiro, Claude, and ElevenLabs. Free to use.
+
+https://adjudge-app.netlify.app

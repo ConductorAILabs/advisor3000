@@ -2,8 +2,23 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { sql } from "@/lib/neon";
 
+// Creates a new user account. Mirrors /api/auth/register but uses the
+// naming the voice-reactions signup gate expects ("sign up to hear reactions").
+// Schema expected (see src/db/schema.sql):
+//   users(id SERIAL PK, email TEXT UNIQUE NOT NULL, name TEXT,
+//         password_hash TEXT NOT NULL, client_id INTEGER REFERENCES clients(id),
+//         role TEXT DEFAULT 'user', created_at TIMESTAMPTZ DEFAULT NOW())
 export async function POST(req: NextRequest) {
-  const { email, password, name } = await req.json();
+  let body: { email?: string; password?: string; name?: string };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const email = body.email?.trim().toLowerCase();
+  const password = body.password;
+  const name = body.name?.trim() || null;
 
   if (!email || !password) {
     return NextResponse.json(
@@ -30,8 +45,8 @@ export async function POST(req: NextRequest) {
 
   const passwordHash = await bcrypt.hash(password, 12);
 
-  // Create a client for this user (each user gets their own org by default)
-  const slug = email.split("@")[0].toLowerCase().replace(/[^a-z0-9]/g, "-");
+  // Each signup gets its own client/org (keeps parity with /api/auth/register)
+  const slug = email.split("@")[0].replace(/[^a-z0-9]/g, "-") + "-" + Date.now().toString(36);
   const [client] = await sql`
     INSERT INTO clients (name, slug)
     VALUES (${name || email}, ${slug})
@@ -41,11 +56,12 @@ export async function POST(req: NextRequest) {
 
   const [user] = await sql`
     INSERT INTO users (email, name, password_hash, client_id, role)
-    VALUES (${email}, ${name || null}, ${passwordHash}, ${client.id}, 'admin')
+    VALUES (${email}, ${name}, ${passwordHash}, ${client.id}, 'user')
     RETURNING id, email, name, client_id, role
   `;
 
   return NextResponse.json({
+    ok: true,
     id: user.id,
     email: user.email,
     name: user.name,

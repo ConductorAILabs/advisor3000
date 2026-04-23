@@ -6,18 +6,21 @@ import { Providers } from "./providers";
 import { AuthNav } from "@/components/auth-nav";
 
 export const metadata: Metadata = {
-  title: "Advisor 3000 — Is Your Creative Truly Original?",
-  description: "Check for unoriginality, plagiarism, and other classic creative money-grabs.",
+  metadataBase: new URL("https://adjudge-app.netlify.app"),
+  title: "Ad-Visor 3000 — How Original Is Your Creative?",
+  description: "Find out if your creative is original without having to search for hours on end.",
   openGraph: {
-    title: "Advisor 3000 — Is Your Creative Truly Original?",
-    description: "Check for unoriginality, plagiarism, and other classic creative money-grabs.",
-    images: [{ url: "/og-image.png", width: 1456, height: 816, alt: "Advisor 3000" }],
+    title: "Ad-Visor 3000 — How Original Is Your Creative?",
+    description: "Find out if your creative is original without having to search for hours on end.",
+    url: "https://adjudge-app.netlify.app",
+    siteName: "Ad-Visor 3000",
+    images: [{ url: "/og-image.png", width: 2342, height: 1312, alt: "Ad-Visor 3000" }],
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Advisor 3000 — Is Your Creative Truly Original?",
-    description: "Check for unoriginality, plagiarism, and other classic creative money-grabs.",
+    title: "Ad-Visor 3000 — How Original Is Your Creative?",
+    description: "Find out if your creative is original without having to search for hours on end.",
     images: ["/og-image.png"],
   },
 };
@@ -32,9 +35,9 @@ export default function RootLayout({
       <body className="min-h-screen" style={{ fontFamily: "var(--font-body)" }}>
         <Providers>
           <nav className="fixed top-0 left-0 right-0 z-50">
-            <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-              <Link href="/">
-                <Image src="/advisor3000.png" alt="Advisor 3000" width={140} height={52} className="h-10 w-auto" priority />
+            <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
+              <Link href="/" className="shrink-0">
+                <Image src="/advisor3000.png" alt="Advisor 3000" width={480} height={180} className="h-20 w-auto drop-shadow-lg" priority />
               </Link>
               <div className="flex items-center gap-1 text-sm">
                 {[
@@ -56,7 +59,7 @@ export default function RootLayout({
               </div>
             </div>
           </nav>
-          <main className="max-w-6xl mx-auto px-6 pt-[65px]">{children}</main>
+          <main className="max-w-6xl mx-auto px-6 pt-[110px]">{children}</main>
         </Providers>
       </body>
     </html>

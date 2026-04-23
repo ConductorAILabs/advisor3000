@@ -12,7 +12,6 @@ import { PredictabilitySpectrum, type CampaignIdea } from "@/components/predicta
 import { FileUploadZone, type ExtractedCampaign, type FileExtractionResult } from "@/components/file-upload";
 import { BenchmarkCard, type IndustryBenchmark } from "@/components/benchmark-card";
 import { VoiceVerdict } from "@/components/voice-verdict";
-import { VoiceInput } from "@/components/voice-input";
 import { VoiceErrorBoundary } from "@/components/voice-error-boundary";
 
 interface Predictability { is_predictable: boolean; closest_match_index: number | null; closest_match_headline: string | null; similarity_explanation: string; predictability_tier: "top5" | "top10" | "top15" | "top20" | "none"; penalty: number; ideas: CampaignIdea[]; brief_provided?: boolean; }
@@ -37,6 +36,7 @@ export default function AnalyzePage() {
   const [selectedAnalyses, setSelectedAnalyses] = useState<Set<string>>(new Set(["originality", "effectiveness", "benchmark"]));
   const [running, setRunning] = useState(false);
   const [runStep, setRunStep] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
   const [verdict, setVerdict] = useState<AdjudgeVerdict | null>(null);
   const [ideateIdeas, setIdeateIdeas] = useState<CampaignIdea[] | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>("originality");
@@ -57,22 +57,36 @@ export default function AnalyzePage() {
   async function handleUpload(e: React.FormEvent) {
     e.preventDefault();
     setUploading(true);
+    setErrorMsg("");
     try {
       const res = await fetch("/api/upload", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
+      if (res.status === 401) {
+        window.location.href = `/signup?next=${encodeURIComponent("/analyze")}`;
+        return;
+      }
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Upload failed");
       setCampaignId(data.id);
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : "Upload failed");
     } finally { setUploading(false); }
   }
 
   async function handleRunAnalysis() {
     if (!campaignId || selectedAnalyses.size === 0) return;
-    setRunning(true); setVerdict(null); setIdeateIdeas(null);
+    setRunning(true); setVerdict(null); setIdeateIdeas(null); setErrorMsg("");
     try {
       const needsJudge = selectedAnalyses.has("originality") || selectedAnalyses.has("effectiveness") || selectedAnalyses.has("benchmark") || selectedAnalyses.has("predictability");
       if (needsJudge) {
         setRunStep("Queuing analysis...");
         const enqRes = await fetch("/api/judge/enqueue", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ campaign_id: campaignId }) });
-        const { job_id } = await enqRes.json();
+        if (enqRes.status === 401) {
+          window.location.href = `/signup?next=${encodeURIComponent("/analyze")}`;
+          return;
+        }
+        const enqData = await enqRes.json();
+        if (!enqRes.ok) throw new Error(enqData.error || "Failed to queue analysis");
+        const { job_id } = enqData;
 
         setRunStep("Analyzing your campaign...");
         let result = null;
@@ -90,10 +104,13 @@ export default function AnalyzePage() {
         setRunStep("Generating ideas...");
         const res = await fetch("/api/ideate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ product: form.brief, industry: form.industry, target_audience: form.target_audience, objective: form.objective, media_type: form.media_type }) });
         const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Idea generation failed");
         setIdeateIdeas(data.ideas || []);
       }
       setActiveTab("originality");
       setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : "Analysis failed");
     } finally { setRunning(false); setRunStep(""); }
   }
 
@@ -105,11 +122,25 @@ export default function AnalyzePage() {
   if (selectedAnalyses.has("ideas") && ideateIdeas && ideateIdeas.length > 0) availableTabs.push({ key: "ideas", label: "Ideas", icon: <Sparkles className="w-4 h-4" /> });
 
   const hasResults = availableTabs.length > 0;
+
+  function tier(score: number): "high" | "good" | "mid" | "low" {
+    if (score >= 80) return "high";
+    if (score >= 60) return "good";
+    if (score >= 40) return "mid";
+    return "low";
+  }
+  function tierHex(score: number): string {
+    const t = tier(score);
+    return t === "high" ? "#16a34a" : t === "good" ? "#059669" : t === "mid" ? "#ca8a04" : "#dc2626";
+  }
   const verdictStyle = verdict ? (
-    verdict.overall_score >= 80 ? { bg: "from-green-500/5 to-transparent", border: "border-green-500/20" }
-    : verdict.overall_score >= 60 ? { bg: "from-emerald-500/5 to-transparent", border: "border-emerald-500/20" }
-    : verdict.overall_score >= 40 ? { bg: "from-amber-500/5 to-transparent", border: "border-amber-500/20" }
-    : { bg: "from-red-500/5 to-transparent", border: "border-red-500/20" }
+    (() => {
+      const t = tier(verdict.overall_score);
+      return {
+        glow: `score-glow-${t}`,
+        badge: `tier-badge-${t}`,
+      };
+    })()
   ) : null;
 
   const inputClass = "w-full px-3 py-2.5 bg-[var(--surface)] border border-[var(--border)] rounded-lg focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)]/20 text-[var(--foreground)] placeholder-[var(--text-muted)] transition-all text-sm";
@@ -122,14 +153,12 @@ export default function AnalyzePage() {
         {/* LEFT: Campaign Form */}
         <div className="space-y-4">
           <form onSubmit={handleUpload} className="card-primary rounded-xl p-5 space-y-4">
+            <fieldset disabled={uploading || !!campaignId} className="space-y-4 contents">
             <p className="text-xs tracking-[0.15em] uppercase text-[var(--text-muted)] font-medium">Campaign Details</p>
 
             <div>
               <label className="block text-xs font-medium mb-1.5">Headline <span className="text-[var(--accent)]">*</span></label>
-              <div className="flex gap-2 items-center">
-                <input type="text" required value={form.headline} onChange={(e) => setForm({ ...form, headline: e.target.value })} placeholder="Your ad headline" className={`${inputClass} flex-1`} />
-                <VoiceErrorBoundary><VoiceInput onTranscript={(t) => setForm((f) => ({ ...f, headline: t }))} /></VoiceErrorBoundary>
-              </div>
+              <input type="text" required value={form.headline} onChange={(e) => setForm({ ...form, headline: e.target.value })} placeholder="Your ad headline" className={inputClass} />
             </div>
             <div>
               <label className="block text-xs font-medium mb-1.5">Body Copy</label>
@@ -171,10 +200,7 @@ export default function AnalyzePage() {
             {/* Brief */}
             <div className="border-t border-[var(--border)] pt-4 space-y-3">
               <p className="text-xs tracking-[0.15em] uppercase text-[var(--text-muted)] font-medium">Client Brief <span className="normal-case tracking-normal">(optional)</span></p>
-              <div className="flex gap-2 items-start">
-                <textarea value={form.brief} onChange={(e) => setForm({ ...form, brief: e.target.value })} placeholder="What was the agency asked to do?" rows={2} className={`${inputClass} resize-none flex-1`} />
-                <VoiceErrorBoundary><VoiceInput onTranscript={(t) => setForm((f) => ({ ...f, brief: t }))} className="mt-0.5" /></VoiceErrorBoundary>
-              </div>
+              <textarea value={form.brief} onChange={(e) => setForm({ ...form, brief: e.target.value })} placeholder="What was the agency asked to do?" rows={2} className={`${inputClass} resize-none`} />
               <div className="grid grid-cols-2 gap-3">
                 <input type="text" value={form.target_audience} onChange={(e) => setForm({ ...form, target_audience: e.target.value })} placeholder="Target audience" className={inputClass} />
                 <input type="text" value={form.objective} onChange={(e) => setForm({ ...form, objective: e.target.value })} placeholder="Campaign objective" className={inputClass} />
@@ -185,6 +211,7 @@ export default function AnalyzePage() {
               className="w-full btn-purple py-2.5 rounded-lg font-semibold disabled:opacity-50 flex items-center justify-center gap-2 text-sm">
               {uploading ? <><Loader2 className="w-4 h-4 animate-spin" /> Uploading...</> : campaignId ? <><CheckCircle className="w-4 h-4" /> Ready</> : <><Upload className="w-4 h-4" /> Upload</>}
             </button>
+            </fieldset>
           </form>
         </div>
 
@@ -242,106 +269,241 @@ export default function AnalyzePage() {
               <p className="text-xs text-[var(--text-muted)]">15-30 seconds</p>
             </div>
           )}
+
+          {errorMsg && !running && (
+            <div className="rounded-lg p-4 bg-red-500/10 border border-red-500/30 flex items-start gap-3">
+              <AlertTriangle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm text-red-500 font-medium">{errorMsg}</p>
+                <button onClick={() => setErrorMsg("")} className="text-xs text-[var(--text-muted)] hover:text-[var(--foreground)] mt-1">Dismiss</button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
       {/* ===== RESULTS ===== */}
       {hasResults && (
-        <div ref={resultsRef} className="border-t border-[var(--border)] pt-8 space-y-6">
+        <div ref={resultsRef} className="border-t border-[var(--border)] pt-10 space-y-8">
           {/* Tab bar */}
-          <div className="flex gap-1 border-b border-[var(--border)] overflow-x-auto">
+          <div className="flex gap-1 border-b border-[var(--border)] overflow-x-auto sticky top-[80px] bg-[var(--background)]/90 backdrop-blur-md z-20 -mx-4 px-4 sm:mx-0 sm:px-0">
             {availableTabs.map((tab) => (
-              <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-                className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-all border-b-2 -mb-px ${
-                  activeTab === tab.key ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--text-muted)] hover:text-[var(--foreground)]"
-                }`} style={{ fontFamily: "var(--font-display)" }}>{tab.icon}{tab.label}</button>
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`flex items-center gap-2 px-4 py-3 text-sm font-semibold tracking-tight whitespace-nowrap transition-all border-b-2 -mb-px ${
+                  activeTab === tab.key
+                    ? "border-[var(--accent)] text-[var(--accent)]"
+                    : "border-transparent text-[var(--text-muted)] hover:text-[var(--foreground)]"
+                }`}
+              >
+                {tab.icon}
+                {tab.label}
+              </button>
             ))}
           </div>
 
           {/* ORIGINALITY */}
           {activeTab === "originality" && verdict && verdictStyle && (
-            <div className="space-y-6">
-              <div className={`card-elevated rounded-2xl p-8 bg-gradient-to-b ${verdictStyle.bg} border ${verdictStyle.border} relative overflow-hidden noise-bg`}>
-                <div className="relative z-10 flex items-center gap-8">
+            <div className="space-y-10">
+              {/* HERO VERDICT BLOCK */}
+              <div
+                className={`card-elevated verdict-hero corner-ticks rounded-3xl px-6 sm:px-10 py-10 sm:py-14 relative noise-bg ${verdictStyle.glow}`}
+              >
+                <div className="relative z-10 flex flex-col items-center text-center gap-6 sm:gap-8">
+                  {/* Eyebrow readout */}
+                  <div className="flex items-center gap-3 flex-wrap justify-center">
+                    <span className="readout">
+                      <span className="readout-dot" />
+                      Ad-Visor 3000
+                    </span>
+                    {typeof verdict.total_ads_compared === "number" && verdict.total_ads_compared > 0 && (
+                      <span className="readout">
+                        {verdict.total_ads_compared} ads compared
+                      </span>
+                    )}
+                  </div>
+
+                  {/* The Gauge — big and centered */}
                   <div className="relative animate-score-reveal">
-                    <AnimatedGauge score={verdict.overall_score} size={150} />
-                    <div className="absolute inset-0 flex flex-col items-center justify-center">
-                      <span className="text-4xl font-bold font-mono" style={{ color: verdict.overall_score >= 80 ? "#16a34a" : verdict.overall_score >= 60 ? "#059669" : verdict.overall_score >= 40 ? "#ca8a04" : "#dc2626" }}>
+                    <AnimatedGauge score={verdict.overall_score} size={260} />
+                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                      <span
+                        className="score-display text-7xl sm:text-8xl font-black"
+                        style={{ color: tierHex(verdict.overall_score) }}
+                      >
                         <AnimatedNumber target={verdict.overall_score} />
                       </span>
-                      <span className="text-[10px] text-[var(--text-muted)] uppercase tracking-widest mt-1">score</span>
+                      <span className="text-[10px] text-[var(--text-muted)] uppercase tracking-[0.3em] mt-1 font-semibold">
+                        Originality Score
+                      </span>
                     </div>
                   </div>
-                  <div className="flex-1 space-y-3">
-                    <div className={`inline-block px-3 py-1 rounded-full text-xs font-semibold border ${
-                      verdict.verdict.includes("HIGHLY ORIGINAL") ? "text-green-600 border-green-600/30 bg-green-600/10"
-                      : verdict.verdict.includes("MOSTLY ORIGINAL") ? "text-emerald-600 border-emerald-600/30 bg-emerald-600/10"
-                      : verdict.verdict.includes("SOMEWHAT") ? "text-amber-600 border-amber-600/30 bg-amber-600/10"
-                      : "text-red-600 border-red-600/30 bg-red-600/10"
-                    }`} style={{ fontFamily: "var(--font-display)" }}>{verdict.verdict}</div>
-                    <p className="text-sm text-[var(--text-muted)] leading-relaxed">{verdict.summary}</p>
-                    <VoiceErrorBoundary><VoiceVerdict result={verdict} /></VoiceErrorBoundary>
+
+                  {/* Verdict badge */}
+                  <div
+                    className={`verdict-badge ${verdictStyle.badge} animate-verdict-slide`}
+                    style={{ animationDelay: "400ms", animationFillMode: "both" }}
+                  >
+                    {verdict.verdict}
+                  </div>
+
+                  {/* Summary */}
+                  <p
+                    className="text-base sm:text-lg text-[var(--foreground)]/85 leading-relaxed max-w-2xl animate-fade-up opacity-0"
+                    style={{ animationDelay: "600ms", animationFillMode: "forwards" }}
+                  >
+                    {verdict.summary}
+                  </p>
+
+                  {/* Voice reactions */}
+                  <div className="w-full max-w-2xl">
+                    <VoiceErrorBoundary>
+                      <VoiceVerdict result={verdict} />
+                    </VoiceErrorBoundary>
                   </div>
                 </div>
               </div>
-              <div className="flex flex-wrap justify-center gap-6">
-                <DimensionRadial score={verdict.dimensions.concept.score} label="Concept" icon={<Lightbulb className="w-3.5 h-3.5" />} weight="40%" delay={400} />
-                <DimensionRadial score={verdict.dimensions.language.score} label="Language" icon={<Type className="w-3.5 h-3.5" />} weight="25%" delay={550} />
-                <DimensionRadial score={verdict.dimensions.strategy.score} label="Strategy" icon={<Target className="w-3.5 h-3.5" />} weight="20%" delay={700} />
-                <DimensionRadial score={verdict.dimensions.execution.score} label="Execution" icon={<Clapperboard className="w-3.5 h-3.5" />} weight="15%" delay={850} />
+
+              {/* DIMENSION RADIALS */}
+              <div className="space-y-5">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <p className="section-eyebrow">Dimensional breakdown</p>
+                  <span className="text-[10px] font-mono text-[var(--text-muted)] tracking-wider">
+                    WEIGHTED COMPOSITE
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+                  <DimensionRadial score={verdict.dimensions.concept.score} label="Concept" icon={<Lightbulb className="w-3.5 h-3.5" />} weight="40%" delay={400} />
+                  <DimensionRadial score={verdict.dimensions.language.score} label="Language" icon={<Type className="w-3.5 h-3.5" />} weight="25%" delay={550} />
+                  <DimensionRadial score={verdict.dimensions.strategy.score} label="Strategy" icon={<Target className="w-3.5 h-3.5" />} weight="20%" delay={700} />
+                  <DimensionRadial score={verdict.dimensions.execution.score} label="Execution" icon={<Clapperboard className="w-3.5 h-3.5" />} weight="15%" delay={850} />
+                </div>
               </div>
-              <div className="space-y-3">
-                <DimensionDetail label="Concept" icon={<Lightbulb className="w-5 h-5" />} weight="40%" dimension={verdict.dimensions.concept} />
-                <DimensionDetail label="Language" icon={<Type className="w-5 h-5" />} weight="25%" dimension={verdict.dimensions.language} />
-                <DimensionDetail label="Strategy" icon={<Target className="w-5 h-5" />} weight="20%" dimension={verdict.dimensions.strategy} />
-                <DimensionDetail label="Execution" icon={<Clapperboard className="w-5 h-5" />} weight="15%" dimension={verdict.dimensions.execution} />
+
+              {/* DIMENSION DETAILS */}
+              <div className="space-y-4">
+                <p className="section-eyebrow">Evidence &amp; analysis</p>
+                <div className="space-y-3">
+                  <DimensionDetail label="Concept" icon={<Lightbulb className="w-5 h-5" />} weight="40%" dimension={verdict.dimensions.concept} />
+                  <DimensionDetail label="Language" icon={<Type className="w-5 h-5" />} weight="25%" dimension={verdict.dimensions.language} />
+                  <DimensionDetail label="Strategy" icon={<Target className="w-5 h-5" />} weight="20%" dimension={verdict.dimensions.strategy} />
+                  <DimensionDetail label="Execution" icon={<Clapperboard className="w-5 h-5" />} weight="15%" dimension={verdict.dimensions.execution} />
+                </div>
               </div>
-              <p className="text-[10px] text-[var(--text-muted)] text-center opacity-50">{verdict.methodology}</p>
+
+              <p className="text-[10px] text-[var(--text-muted)] text-center opacity-50 pt-2">
+                {verdict.methodology}
+              </p>
             </div>
           )}
 
           {/* EFFECTIVENESS */}
           {activeTab === "effectiveness" && verdict?.effectiveness && (
-            <div className="card-elevated rounded-xl p-6 space-y-5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="relative">
-                    <AnimatedGauge score={verdict.effectiveness.overall} size={70} />
+            <div className="card-elevated rounded-2xl p-7 space-y-7">
+              {/* Header: score + predicted performance */}
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex items-center gap-5">
+                  <div className="relative animate-score-reveal">
+                    <AnimatedGauge score={verdict.effectiveness.overall} size={96} />
                     <div className="absolute inset-0 flex items-center justify-center">
-                      <span className="text-base font-bold font-mono" style={{ color: verdict.effectiveness.overall >= 80 ? "#16a34a" : verdict.effectiveness.overall >= 60 ? "#059669" : verdict.effectiveness.overall >= 40 ? "#ca8a04" : "#dc2626" }}>{verdict.effectiveness.overall}</span>
+                      <span
+                        className="score-display text-2xl font-bold font-mono"
+                        style={{ color: tierHex(verdict.effectiveness.overall) }}
+                      >
+                        <AnimatedNumber target={verdict.effectiveness.overall} />
+                      </span>
                     </div>
                   </div>
                   <div>
-                    <p className="font-semibold text-sm" style={{ fontFamily: "var(--font-display)" }}>Effectiveness</p>
-                    <p className="text-xs text-[var(--text-muted)]">Predicted performance</p>
+                    <p className="section-eyebrow mb-1">Effectiveness</p>
+                    <p className="text-lg font-semibold tracking-tight">Predicted performance</p>
+                    <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                      Composite of six behavioral signals
+                    </p>
                   </div>
                 </div>
-                <div className={`px-3 py-1 rounded-full text-xs font-semibold border ${
-                  verdict.effectiveness.predicted_performance === "HIGH" ? "text-green-600 border-green-600/30 bg-green-600/10"
-                  : verdict.effectiveness.predicted_performance === "ABOVE AVERAGE" ? "text-emerald-600 border-emerald-600/30 bg-emerald-600/10"
-                  : verdict.effectiveness.predicted_performance === "AVERAGE" ? "text-amber-600 border-amber-600/30 bg-amber-600/10"
-                  : "text-red-600 border-red-600/30 bg-red-600/10"
-                }`}>{verdict.effectiveness.predicted_performance}</div>
+                <div
+                  className={`verdict-badge ${
+                    verdict.effectiveness.predicted_performance === "HIGH" ? "tier-badge-high"
+                    : verdict.effectiveness.predicted_performance === "ABOVE AVERAGE" ? "tier-badge-good"
+                    : verdict.effectiveness.predicted_performance === "AVERAGE" ? "tier-badge-mid"
+                    : "tier-badge-low"
+                  }`}
+                >
+                  {verdict.effectiveness.predicted_performance}
+                </div>
               </div>
-              <div className="space-y-2.5">
-                {(["attention", "persuasion", "brand_recall", "emotional_resonance", "clarity", "call_to_action"] as const).map((key) => {
-                  const labels: Record<string, { label: string; icon: React.ReactNode }> = { attention: { label: "Attention", icon: <Eye className="w-3 h-3" /> }, persuasion: { label: "Persuasion", icon: <TrendingUp className="w-3 h-3" /> }, brand_recall: { label: "Brand Recall", icon: <Brain className="w-3 h-3" /> }, emotional_resonance: { label: "Emotion", icon: <Heart className="w-3 h-3" /> }, clarity: { label: "Clarity", icon: <MessageSquare className="w-3 h-3" /> }, call_to_action: { label: "CTA", icon: <MousePointerClick className="w-3 h-3" /> } };
-                  const dim = verdict.effectiveness!.dimensions[key];
-                  const c = dim.score >= 80 ? "#16a34a" : dim.score >= 60 ? "#059669" : dim.score >= 40 ? "#ca8a04" : "#dc2626";
-                  return (
-                    <div key={key} className="flex items-center gap-3">
-                      <div className="flex items-center gap-1.5 w-24 shrink-0 text-[var(--text-muted)]">{labels[key].icon}<span className="text-xs">{labels[key].label}</span></div>
-                      <div className="flex-1 h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden">
-                        <div className="h-full rounded-full" style={{ width: `${dim.score}%`, backgroundColor: c, transition: "width 1s" }} />
+
+              {/* Metric bars */}
+              <div className="space-y-4">
+                <p className="section-eyebrow">Behavioral signals</p>
+                <div className="space-y-3.5">
+                  {(["attention", "persuasion", "brand_recall", "emotional_resonance", "clarity", "call_to_action"] as const).map((key, i) => {
+                    const labels: Record<string, { label: string; icon: React.ReactNode }> = {
+                      attention: { label: "Attention", icon: <Eye className="w-3.5 h-3.5" /> },
+                      persuasion: { label: "Persuasion", icon: <TrendingUp className="w-3.5 h-3.5" /> },
+                      brand_recall: { label: "Brand Recall", icon: <Brain className="w-3.5 h-3.5" /> },
+                      emotional_resonance: { label: "Emotion", icon: <Heart className="w-3.5 h-3.5" /> },
+                      clarity: { label: "Clarity", icon: <MessageSquare className="w-3.5 h-3.5" /> },
+                      call_to_action: { label: "CTA", icon: <MousePointerClick className="w-3.5 h-3.5" /> },
+                    };
+                    const dim = verdict.effectiveness!.dimensions[key];
+                    const c = tierHex(dim.score);
+                    return (
+                      <div
+                        key={key}
+                        className="grid grid-cols-[120px_1fr_48px] sm:grid-cols-[150px_1fr_56px] items-center gap-3 animate-fade-up opacity-0"
+                        style={{ animationDelay: `${120 * i}ms`, animationFillMode: "forwards" }}
+                      >
+                        <div className="flex items-center gap-2 text-[var(--foreground)]/80">
+                          <span style={{ color: c }}>{labels[key].icon}</span>
+                          <span className="text-sm font-medium">{labels[key].label}</span>
+                        </div>
+                        <div className="metric-bar-track">
+                          <div
+                            className="metric-bar-fill"
+                            style={{ width: `${dim.score}%`, backgroundColor: c, color: c }}
+                          />
+                        </div>
+                        <span
+                          className="score-display text-base font-mono font-bold text-right tabular-nums"
+                          style={{ color: c }}
+                        >
+                          {dim.score}
+                        </span>
                       </div>
-                      <span className="text-xs font-mono font-bold w-6 text-right" style={{ color: c }}>{dim.score}</span>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
-              <div className="grid grid-cols-2 gap-4 text-xs">
-                <div><p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] mb-2">Techniques Used</p><div className="flex flex-wrap gap-1">{verdict.effectiveness.copywriting_techniques_used.map((t, i) => <span key={i} className="px-2 py-0.5 rounded-full bg-green-500/10 text-green-600 border border-green-500/20 text-[10px]">{t}</span>)}</div></div>
-                <div><p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] mb-2">Missing</p><div className="flex flex-wrap gap-1">{verdict.effectiveness.copywriting_techniques_missing.map((t, i) => <span key={i} className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 border border-amber-500/20 text-[10px]">{t}</span>)}</div></div>
+
+              {/* Techniques grid */}
+              <div className="grid sm:grid-cols-2 gap-5 pt-2 border-t border-[var(--border)]">
+                <div className="space-y-2">
+                  <p className="section-eyebrow">Techniques used</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {verdict.effectiveness.copywriting_techniques_used.length === 0 ? (
+                      <span className="text-xs text-[var(--text-muted)] italic">None detected</span>
+                    ) : (
+                      verdict.effectiveness.copywriting_techniques_used.map((t, i) => (
+                        <span key={i} className="technique-chip tier-badge-high">{t}</span>
+                      ))
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <p className="section-eyebrow">Missing opportunities</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {verdict.effectiveness.copywriting_techniques_missing.length === 0 ? (
+                      <span className="text-xs text-[var(--text-muted)] italic">Nothing critical missing</span>
+                    ) : (
+                      verdict.effectiveness.copywriting_techniques_missing.map((t, i) => (
+                        <span key={i} className="technique-chip tier-badge-mid">{t}</span>
+                      ))
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -349,21 +511,52 @@ export default function AnalyzePage() {
           {/* PREDICTABILITY */}
           {activeTab === "predictability" && verdict?.predictability && (
             !verdict.predictability.brief_provided ? (
-              <div className="card-primary rounded-xl p-6"><p className="text-sm text-[var(--text-muted)]">No brief provided. Re-submit with the original client brief to check if AI could arrive at the same idea.</p></div>
+              <div className="card-primary rounded-2xl p-8 text-center">
+                <Bot className="w-8 h-8 text-[var(--text-muted)] mx-auto mb-3 opacity-60" />
+                <p className="text-sm text-[var(--text-muted)] leading-relaxed max-w-md mx-auto">
+                  No brief provided. Re-submit with the original client brief to check if AI could arrive at the same idea.
+                </p>
+              </div>
             ) : (
-              <div className={`card-elevated rounded-xl p-6 space-y-4 ${verdict.predictability.is_predictable ? "border-red-500/20" : "border-green-500/20"}`}>
-                <div className="flex items-start justify-between">
-                  <div>
+              <div
+                className={`card-elevated rounded-2xl p-7 space-y-6 ${
+                  verdict.predictability.is_predictable ? "border-red-500/25" : "border-green-500/25"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                  <div className="space-y-2 flex-1 min-w-[220px]">
                     {verdict.predictability.is_predictable ? (
-                      <div className="flex items-center gap-2 mb-2"><AlertTriangle className="w-5 h-5 text-red-500" /><span className="font-semibold text-red-600">AI predicted this idea</span></div>
+                      <div className="verdict-badge tier-badge-low">
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                        AI predicted this idea
+                      </div>
                     ) : (
-                      <div className="flex items-center gap-2 mb-2"><CheckCircle className="w-5 h-5 text-green-500" /><span className="font-semibold text-green-600">Beyond AI prediction</span></div>
+                      <div className="verdict-badge tier-badge-high">
+                        <CheckCircle className="w-3.5 h-3.5" />
+                        Beyond AI prediction
+                      </div>
                     )}
-                    <p className="text-sm text-[var(--text-muted)]">{verdict.predictability.similarity_explanation}</p>
+                    <p className="text-sm text-[var(--foreground)]/85 leading-relaxed mt-3">
+                      {verdict.predictability.similarity_explanation}
+                    </p>
                   </div>
-                  {verdict.predictability.penalty !== 0 && <div className="text-right shrink-0 ml-4"><p className="text-2xl font-bold font-mono text-red-500">{verdict.predictability.penalty}</p><p className="text-[10px] text-[var(--text-muted)]">penalty</p></div>}
+                  {verdict.predictability.penalty !== 0 && (
+                    <div className="text-right shrink-0 px-4 py-3 rounded-xl bg-red-500/5 border border-red-500/20">
+                      <p className="score-display text-3xl font-bold font-mono text-red-500">
+                        {verdict.predictability.penalty}
+                      </p>
+                      <p className="text-[10px] text-[var(--text-muted)] uppercase tracking-[0.15em] mt-0.5 font-semibold">
+                        Score penalty
+                      </p>
+                    </div>
+                  )}
                 </div>
-                {verdict.predictability.ideas.length > 0 && <PredictabilitySpectrum ideas={verdict.predictability.ideas} matchIndex={verdict.predictability.closest_match_index} />}
+                {verdict.predictability.ideas.length > 0 && (
+                  <PredictabilitySpectrum
+                    ideas={verdict.predictability.ideas}
+                    matchIndex={verdict.predictability.closest_match_index}
+                  />
+                )}
               </div>
             )
           )}
@@ -375,21 +568,39 @@ export default function AnalyzePage() {
 
           {/* IDEAS */}
           {activeTab === "ideas" && ideateIdeas && ideateIdeas.length > 0 && (
-            <div className="space-y-3">
-              <div className="grid grid-cols-4 gap-2 text-[10px] text-center">
-                <div className="bg-red-500/10 text-red-600 rounded py-1">1-5: Obvious</div>
-                <div className="bg-amber-500/10 text-amber-600 rounded py-1">6-10: Expected</div>
-                <div className="bg-[var(--surface-2)] text-[var(--text-muted)] rounded py-1">11-15: Creative</div>
-                <div className="bg-green-500/10 text-green-600 rounded py-1">16-20: Surprising</div>
-              </div>
-              {ideateIdeas.map((idea, i) => (
-                <div key={i} className={`rounded-lg p-3 text-sm flex items-start gap-3 ${
-                  i < 5 ? "bg-red-500/5 border border-red-500/10" : i < 10 ? "bg-amber-500/5 border border-amber-500/10" : i < 15 ? "bg-[var(--surface-2)] border border-[var(--border)]" : "bg-green-500/5 border border-green-500/10"
-                }`}>
-                  <span className={`font-mono text-[10px] mt-0.5 shrink-0 w-5 font-bold ${i < 5 ? "text-red-500" : i < 10 ? "text-amber-500" : i < 15 ? "text-[var(--text-muted)]" : "text-green-500"}`}>#{i + 1}</span>
-                  <div><p className="font-medium text-sm">&ldquo;{idea.headline}&rdquo;</p><p className="text-xs text-[var(--text-muted)] mt-0.5">{idea.concept}</p></div>
+            <div className="space-y-5">
+              <div>
+                <p className="section-eyebrow mb-3">Predictability spectrum</p>
+                <div className="grid grid-cols-4 gap-2 text-[10px] text-center font-mono tracking-wider">
+                  <div className="bg-red-500/10 text-red-600 rounded-lg py-1.5 border border-red-500/15">1-5 OBVIOUS</div>
+                  <div className="bg-amber-500/10 text-amber-600 rounded-lg py-1.5 border border-amber-500/15">6-10 EXPECTED</div>
+                  <div className="bg-[var(--surface-2)] text-[var(--text-muted)] rounded-lg py-1.5 border border-[var(--border)]">11-15 CREATIVE</div>
+                  <div className="bg-green-500/10 text-green-600 rounded-lg py-1.5 border border-green-500/15">16-20 SURPRISING</div>
                 </div>
-              ))}
+              </div>
+              <div className="space-y-2.5">
+                {ideateIdeas.map((idea, i) => {
+                  const tier =
+                    i < 5 ? { text: "text-red-500", bg: "bg-red-500/5", border: "border-red-500/15" }
+                    : i < 10 ? { text: "text-amber-500", bg: "bg-amber-500/5", border: "border-amber-500/15" }
+                    : i < 15 ? { text: "text-[var(--text-muted)]", bg: "bg-[var(--surface-2)]", border: "border-[var(--border)]" }
+                    :          { text: "text-green-500", bg: "bg-green-500/5", border: "border-green-500/15" };
+                  return (
+                    <div
+                      key={i}
+                      className={`rounded-lg p-3.5 text-sm flex items-start gap-3 border transition-all hover:translate-x-0.5 ${tier.bg} ${tier.border}`}
+                    >
+                      <span className={`font-mono text-xs mt-0.5 shrink-0 w-7 font-bold ${tier.text}`}>
+                        #{String(i + 1).padStart(2, "0")}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="font-semibold text-sm leading-snug">&ldquo;{idea.headline}&rdquo;</p>
+                        <p className="text-xs text-[var(--text-muted)] mt-1 leading-relaxed">{idea.concept}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>

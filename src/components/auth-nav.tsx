@@ -25,11 +25,19 @@ export function AuthNav() {
   }
 
   return (
-    <Link
-      href="/login"
-      className="text-[var(--accent)] hover:text-[var(--accent-dark)] transition-colors text-sm font-medium"
-    >
-      Sign in
-    </Link>
+    <div className="flex items-center gap-4">
+      <Link
+        href="/login"
+        className="text-[var(--text-muted)] hover:text-[var(--foreground)] transition-colors text-sm"
+      >
+        Sign in
+      </Link>
+      <Link
+        href="/signup"
+        className="text-[var(--accent)] hover:text-[var(--accent-dark)] transition-colors text-sm font-medium"
+      >
+        Sign up
+      </Link>
+    </div>
   );
 }

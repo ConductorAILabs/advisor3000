@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { extractCampaignsFromFile } from "@/lib/file-extract";
+import { requireUser } from "@/lib/session";
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
 
@@ -13,6 +14,9 @@ const ACCEPTED_TYPES = new Set([
 ]);
 
 export async function POST(req: NextRequest) {
+  const user = await requireUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
   try {
     const formData = await req.formData();
     const file = formData.get("file") as File | null;

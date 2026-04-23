@@ -42,3 +42,17 @@ next-env.d.ts
 
 # Local Netlify folder
 .netlify
+
+# macOS metadata
+._*
+
+# Local Claude Code settings
+.claude/
+
+# Large binaries at repo root (keep public/*.mp4 for site assets)
+/*.mp4
+/*.dmg
+
+# Stray root-level images that duplicate public/ copies
+/advisor3000.png
+/advisor3000-2.png

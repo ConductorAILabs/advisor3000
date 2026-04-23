@@ -3,8 +3,12 @@ import {
   analyzeVisualCreative,
   searchVisualSimilarity,
 } from "@/lib/visual-analysis";
+import { requireUser } from "@/lib/session";
 
 export async function POST(req: NextRequest) {
+  const user = await requireUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
   const formData = await req.formData();
 
   const imageFile = formData.get("image");

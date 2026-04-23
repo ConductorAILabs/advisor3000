@@ -3,7 +3,6 @@
 import { useEffect, useRef } from "react";
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
-import Image from "next/image";
 
 const PLAYBACK_SPEED = 0.35; // forward speed (fractional = slower)
 const REVERSE_STEP = 0.033;  // seconds to step back per ~60fps frame while reversing
@@ -70,23 +69,22 @@ export default function Home() {
       {/* Centred content */}
       <div className="fixed inset-0 z-40 flex flex-col items-center justify-center text-center px-8 pointer-events-none">
         <div className="pointer-events-auto w-full px-8">
-          <Image
-            src="/advisor3000.png"
-            alt="Advisor 3000"
-            width={900}
-            height={340}
-            className="w-full max-w-3xl mx-auto mb-6 drop-shadow-2xl"
-            priority
-          />
           <h1
-            className="text-white font-black uppercase leading-[0.9] mb-6 whitespace-nowrap"
-            style={{ fontSize: "clamp(1rem, 3.5vw, 3.5rem)", letterSpacing: "-0.01em" }}
+            className="text-white font-black uppercase leading-[0.95] mb-6 whitespace-nowrap tracking-tight"
+            style={{
+              fontFamily: "var(--font-body)",
+              fontSize: "clamp(2rem, 6.5vw, 6rem)",
+              letterSpacing: "-0.025em",
+            }}
           >
-            IS YOUR CREATIVE AGENCY<br />
-            GIVING YOU SLOP?
+            HOW ORIGINAL IS<br />
+            YOUR CREATIVE?
           </h1>
-          <p className="text-white/70 text-xl uppercase tracking-[0.15em] mb-10 font-medium">
-            Use the Advisor 3000 to check the originality of your creative
+          <p
+            className="text-white/75 mb-10 font-medium max-w-2xl mx-auto"
+            style={{ fontFamily: "var(--font-body)", fontSize: "clamp(1rem, 1.4vw, 1.375rem)" }}
+          >
+            Check your headlines, campaigns, scripts, and more with the Ad-Visor 3000 by Conductor AI Labs.
           </p>
           <div className="flex gap-4 justify-center">
             <Link href="/analyze" className="btn-purple px-8 py-3 rounded-lg font-bold text-base flex items-center gap-2">

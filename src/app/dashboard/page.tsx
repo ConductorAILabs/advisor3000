@@ -149,7 +149,7 @@ export default function DashboardPage() {
       ) : campaigns.length === 0 ? (
         <div className="text-center py-16">
           <p className="text-lg" style={{ fontFamily: "var(--font-display)" }}>No campaigns yet</p>
-          <a href="/upload" className="text-[var(--accent)] hover:underline mt-2 inline-block text-sm">Upload your first ad</a>
+          <a href="/analyze" className="text-[var(--accent)] hover:underline mt-2 inline-block text-sm">Analyze your first ad</a>
         </div>
       ) : (
         <div>

@@ -60,5 +60,10 @@ export const authOptions: NextAuthOptions = {
       return session;
     },
   },
-  secret: process.env.NEXTAUTH_SECRET,
+  secret: process.env.NEXTAUTH_SECRET || (() => {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("NEXTAUTH_SECRET is required in production");
+    }
+    return "dev-only-insecure-secret";
+  })(),
 };

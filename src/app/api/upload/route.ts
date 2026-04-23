@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { sql } from "@/lib/neon";
 import { embed } from "@/lib/voyage";
 import { getNamespace } from "@/lib/turbopuffer";
+import { requireUser } from "@/lib/session";
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
+  const user = await requireUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const { headline, body_copy, script, industry, media_type, language, client_id, brief, target_audience, objective } =
+  const { headline, body_copy, script, industry, media_type, language, brief, target_audience, objective } =
     await req.json();
 
   if (!headline || !industry || !media_type) {
@@ -18,15 +18,10 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Use the authenticated user's client_id if available, fall back to body param
-  const sessionClientId = session?.user
-    ? (session.user as Record<string, unknown>).clientId as number | null
-    : null;
-  const cid = sessionClientId || client_id || null;
+  const cid = user.clientId;
   const bc = body_copy || null;
   const sc = script || null;
   const lang = language || "en";
-
   const br = brief || null;
   const ta = target_audience || null;
   const obj = objective || null;

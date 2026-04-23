@@ -2,8 +2,12 @@ export const maxDuration = 60;
 
 import { NextRequest, NextResponse } from "next/server";
 import { checkClaims, extractClaimsFromImage } from "@/lib/claims";
+import { requireUser } from "@/lib/session";
 
 export async function POST(req: NextRequest) {
+  const user = await requireUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
   const contentType = req.headers.get("content-type") || "";
 
   let claims_text = "";

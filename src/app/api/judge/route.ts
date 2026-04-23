@@ -9,8 +9,12 @@ import { generateIdeas, checkPredictability } from "@/lib/ideate";
 import { deepSearch } from "@/lib/deep-search";
 import { getIndustryBenchmark } from "@/lib/benchmarks";
 import { predictEffectiveness } from "@/lib/effectiveness";
+import { requireUser } from "@/lib/session";
 
 export async function POST(req: NextRequest) {
+  const user = await requireUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
   const { campaign_id } = await req.json();
 
   if (!campaign_id) {
@@ -22,6 +26,9 @@ export async function POST(req: NextRequest) {
 
   if (!campaign) {
     return NextResponse.json({ error: "campaign not found" }, { status: 404 });
+  }
+  if (campaign.client_id !== user.clientId) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
   const headline = campaign.headline as string;
@@ -109,7 +116,7 @@ export async function POST(req: NextRequest) {
   );
 
   // Apply predictability penalty
-  const adjustedScore = Math.max(0, Math.min(100, verdict.overall_score + predictability.penalty));
+  const adjustedScore = Math.round(Math.max(1, Math.min(100, verdict.overall_score + predictability.penalty)));
   const adjustedVerdict = adjustedScore >= 80 ? "HIGHLY ORIGINAL"
     : adjustedScore >= 60 ? "MOSTLY ORIGINAL"
     : adjustedScore >= 40 ? "SOMEWHAT DERIVATIVE"
@@ -152,7 +159,8 @@ export async function POST(req: NextRequest) {
     },
   };
 
-  // Save to Neon
+  // Save to Neon — replace any prior verdict for this campaign
+  await sql`DELETE FROM verdicts WHERE campaign_id = ${campaign_id}`;
   const [saved] = await sql`
     INSERT INTO verdicts (campaign_id, score, verdict, reasoning, similar_ads)
     VALUES (
